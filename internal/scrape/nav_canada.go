@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+// NavCanadaResponse is a general structure returned from all NavCanada endpoints often
+// with each Data Text field containing escaped json
 type NavCanadaResponse struct {
 	Meta struct {
 		Now   string `json:"now"`
@@ -33,6 +35,7 @@ type NavCanadaResponse struct {
 	} `json:"data"`
 }
 
+// GFAText represents the Text section of a NavCanadaResponse GFA query
 type GFAText struct {
 	Product      string `json:"product"`
 	SubProduct   string `json:"sub_product"`
@@ -54,15 +57,38 @@ type GFAText struct {
 	} `json:"frame_lists"`
 }
 
+// GFA is the desired data extracted from a NavCanadaResponse
 type GFA struct {
 	CloudsWeather           []GFAMetadata
 	IcingTurbulenceFreezing []GFAMetadata
 }
 
+// testString produces a string to use in testing
+func (g *GFA) testString() string {
+	builder := strings.Builder{}
+	for _, val := range g.CloudsWeather {
+		builder.WriteString(val.testString())
+	}
+
+	for _, val := range g.IcingTurbulenceFreezing {
+		builder.WriteString(val.testString())
+	}
+
+	return builder.String()
+}
+
+// A GFAMetadata contains the minimal information needed to display and select GFA
 type GFAMetadata struct {
 	StartValidity time.Time
 	EndValidity   time.Time
-	Id            string
+	Id            string // the Id  the image used in creating the URL
+}
+
+// testString produces a string to use in testing
+func (g *GFAMetadata) testString() string {
+	return "[" + g.StartValidity.Format(NavCanadaTimeFormat) +
+		" " + g.EndValidity.Format(NavCanadaTimeFormat) +
+		" " + g.Id + "]"
 }
 
 const (
@@ -75,16 +101,24 @@ const (
 	NavCanadaTimeFormatAlt = "2006-01-02T15:04:05+00:00"
 )
 
+// GetGFAImageIds sends a request to NavCanada's severs synchronously to get GFA (Graphic Area Forecast) data
 func GetGFAImageIds() (GFA, error) {
 	var body NavCanadaResponse
-	var res GFA
 
 	err := util.RequestAndParse(NavCanBaseApiUrl+"site=CYXE&image=GFA/CLDWX&image=GFA/TURBC", &body)
 	if err != nil {
 		return GFA{}, err
 	}
 
-	for _, datum := range body.Data {
+	return ProcessGFAResponse(body)
+
+}
+
+// ProcessGFAResponse extracts GFA data contained in gfaRes's NavCanadaResponse's Data.Text field
+func ProcessGFAResponse(gfaRes NavCanadaResponse) (GFA, error) {
+	var res GFA
+
+	for _, datum := range gfaRes.Data {
 		gfaMeta, err := ExtractGFAMeta(datum.Text)
 		if err != nil {
 			return GFA{}, err
@@ -103,6 +137,7 @@ func GetGFAImageIds() (GFA, error) {
 	return res, nil
 }
 
+// ExtractGFAMeta extracts each frames data from the last FramesList from GFAText into GFAMetadata
 func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 	var gfaText GFAText
 	var records []GFAMetadata

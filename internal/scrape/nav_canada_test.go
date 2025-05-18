@@ -1,36 +1,41 @@
 package scrape
 
 import (
+	"scuffed-v2/internal/util"
 	"testing"
-	"time"
 )
 
-func TestExtractGFAMeta(t *testing.T) {
+func TestProcessGFAResponse(t *testing.T) {
 	cases := []struct {
-		text string
-		// expect the timestamps to be equally dispersed
+		testFilePath string
+		expected     string
 	}{
 		{
-			text: "{\"product\": \"GFA\", \"sub_product\": \"CLDWX\", \"geography\": \"GFACN32\", \"sub_geography\": \"\", \"frame_lists\": [{\"id\": 351933, \"sv\": \"2025-05-14T12:00:00\", \"ev\": \"2025-05-14T18:00:00\", \"frames\": [{\"id\": 56196162, \"sv\": \"2025-05-14T12:00:00\", \"ev\": \"2025-05-14T18:00:00\", \"images\": [{\"id\": 56627537, \"created\": \"2025-05-14T11:35:51.150\"}]}, {\"id\": 56196182, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"images\": [{\"id\": 56627557, \"created\": \"2025-05-14T11:35:54.717\"}]}, {\"id\": 56196181, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56627556, \"created\": \"2025-05-14T11:35:54.361\"}]}]}, {\"id\": 351997, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"frames\": [{\"id\": 56203826, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"images\": [{\"id\": 56635221, \"created\": \"2025-05-14T17:36:10.565\"}]}, {\"id\": 56203840, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56635234, \"created\": \"2025-05-14T17:36:12.528\"}]}, {\"id\": 56203888, \"sv\": \"2025-05-15T06:00:00\", \"ev\": \"2025-05-15T12:00:00\", \"images\": [{\"id\": 56635282, \"created\": \"2025-05-14T17:36:17.888\"}]}]}, {\"id\": 352017, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"frames\": [{\"id\": 56211137, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56642548, \"created\": \"2025-05-14T23:28:57.242\"}]}, {\"id\": 56211119, \"sv\": \"2025-05-15T06:00:00\", \"ev\": \"2025-05-15T12:00:00\", \"images\": [{\"id\": 56642530, \"created\": \"2025-05-14T23:28:52.982\"}]}, {\"id\": 56211144, \"sv\": \"2025-05-15T12:00:00\", \"ev\": \"2025-05-15T18:00:00\", \"images\": [{\"id\": 56642555, \"created\": \"2025-05-14T23:28:57.416\"}]}]}]}",
-		},
-		{
-			text: "{\"product\": \"GFA\", \"sub_product\": \"TURBC\", \"geography\": \"GFACN32\", \"sub_geography\": \"\", \"frame_lists\": [{\"id\": 351936, \"sv\": \"2025-05-14T12:00:00\", \"ev\": \"2025-05-14T18:00:00\", \"frames\": [{\"id\": 56196169, \"sv\": \"2025-05-14T12:00:00\", \"ev\": \"2025-05-14T18:00:00\", \"images\": [{\"id\": 56627544, \"created\": \"2025-05-14T11:35:52.540\"}]}, {\"id\": 56196165, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"images\": [{\"id\": 56627540, \"created\": \"2025-05-14T11:35:52.670\"}]}, {\"id\": 56196197, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56627572, \"created\": \"2025-05-14T11:35:56.452\"}]}]}, {\"id\": 352003, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"frames\": [{\"id\": 56203832, \"sv\": \"2025-05-14T18:00:00\", \"ev\": \"2025-05-15T00:00:00\", \"images\": [{\"id\": 56635226, \"created\": \"2025-05-14T17:36:10.780\"}]}, {\"id\": 56203859, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56635253, \"created\": \"2025-05-14T17:36:15.756\"}]}, {\"id\": 56203940, \"sv\": \"2025-05-15T06:00:00\", \"ev\": \"2025-05-15T12:00:00\", \"images\": [{\"id\": 56635334, \"created\": \"2025-05-14T17:36:22.717\"}]}]}, {\"id\": 352014, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"frames\": [{\"id\": 56211116, \"sv\": \"2025-05-15T00:00:00\", \"ev\": \"2025-05-15T06:00:00\", \"images\": [{\"id\": 56642527, \"created\": \"2025-05-14T23:28:50.774\"}]}, {\"id\": 56211129, \"sv\": \"2025-05-15T06:00:00\", \"ev\": \"2025-05-15T12:00:00\", \"images\": [{\"id\": 56642540, \"created\": \"2025-05-14T23:28:55.652\"}]}, {\"id\": 56211152, \"sv\": \"2025-05-15T12:00:00\", \"ev\": \"2025-05-15T18:00:00\", \"images\": [{\"id\": 56642563, \"created\": \"2025-05-14T23:28:59.229\"}]}]}]}",
+			"testdata/happy_path/gfa_response.json",
+			"[2025-05-18T00:00:00 2025-05-18T06:00:00 56731137]" +
+				"[2025-05-18T06:00:00 2025-05-18T12:00:00 56731152]" +
+				"[2025-05-18T12:00:00 2025-05-18T18:00:00 56731163]" +
+				"[2025-05-18T00:00:00 2025-05-18T06:00:00 56731145]" +
+				"[2025-05-18T06:00:00 2025-05-18T12:00:00 56731150]" +
+				"[2025-05-18T12:00:00 2025-05-18T18:00:00 56731173]",
 		},
 	}
 
 	for _, tc := range cases {
-		val, err := ExtractGFAMeta(tc.text)
+
+		var result NavCanadaResponse
+		err := util.ReadFileToStruct(tc.testFilePath, &result)
 		if err != nil {
-			t.Fatalf("ExtractGFAMeta returned an error %v", err)
+			t.Fatalf("Could not access test data, %s", err)
 		}
 
-		prev := val[0]
-		for _, curr := range val[1:] {
-			isSixHoursAfter := curr.StartValidity.Equal(prev.StartValidity.Add(6 * time.Hour))
-			if !isSixHoursAfter {
-				t.Fatalf("ExtractGFAMeta did not return three hours after %v, %v", prev.StartValidity, curr.StartValidity)
-			}
-			prev = curr
+		actual, err := ProcessGFAResponse(result)
+		if err != nil {
+			t.Fatalf("Unexpected error processing GFA response %s", err)
+		}
+
+		if actual.testString() != tc.expected {
+			t.Fatalf("\nExpected: %v\nActual:   %v", tc.expected, actual.testString())
 		}
 	}
 }
