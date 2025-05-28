@@ -22,7 +22,6 @@ func TestProcessGFAResponse(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-
 		var result NavCanadaResponse
 		err := util.ReadFileToStruct(tc.testFilePath, &result)
 		if err != nil {
@@ -37,5 +36,23 @@ func TestProcessGFAResponse(t *testing.T) {
 		if actual.testString() != tc.expected {
 			t.Fatalf("\nExpected: %v\nActual:   %v", tc.expected, actual.testString())
 		}
+	}
+}
+
+func TestProcessMETARResponse(t *testing.T) {
+
+}
+
+func TestNavCanUrl_GetUrl(t *testing.T) {
+	actual := NewUrlBuilder().
+		Sites("CYXE", "CYSF").
+		MetarChoice(3).
+		Alpha(Metar, Taf).
+		Build()
+
+	expected := "https://plan.navcanada.ca/weather/api/alpha/?&site=CYXE&site=CYSF&metar_choice=3&alpha=metar&alpha=taf&radius=0"
+
+	if expected != actual {
+		t.Fatalf("expected %q got %q", expected, actual)
 	}
 }

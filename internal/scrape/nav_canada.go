@@ -9,6 +9,16 @@ import (
 	"time"
 )
 
+const (
+	NavCanBaseApiUrl = "https://plan.navcanada.ca/weather/api/alpha/?"
+
+	CloudForecast      = "GFA/CLDWX/GFACN32/"
+	TurbulenceForecast = "GFA/TURBC/GFACN32/"
+
+	NavCanadaTimeFormat    = "2006-01-02T15:04:05"
+	NavCanadaTimeFormatAlt = "2006-01-02T15:04:05+00:00"
+)
+
 // NavCanadaResponse is a general structure returned from all NavCanada endpoints often
 // with each Data Text field containing escaped json
 type NavCanadaResponse struct {
@@ -91,21 +101,16 @@ func (g *GFAMetadata) testString() string {
 		" " + g.Id + "]"
 }
 
-const (
-	NavCanBaseApiUrl = "https://plan.navcanada.ca/weather/api/alpha/?"
-
-	CloudForecast      = "GFA/CLDWX/GFACN32/"
-	TurbulenceForecast = "GFA/TURBC/GFACN32/"
-
-	NavCanadaTimeFormat    = "2006-01-02T15:04:05"
-	NavCanadaTimeFormatAlt = "2006-01-02T15:04:05+00:00"
-)
-
 // GetGFAImageIds sends a request to NavCanada's severs synchronously to get GFA (Graphic Area Forecast) data
 func GetGFAImageIds() (GFA, error) {
 	var body NavCanadaResponse
 
-	err := util.RequestAndParse(NavCanBaseApiUrl+"site=CYXE&image=GFA/CLDWX&image=GFA/TURBC", &body)
+	url := NewUrlBuilder().
+		Sites("CYXE").
+		Images(GfaTurbulence, GfaClouds).
+		Build()
+
+	err := util.RequestAndParse(url, &body)
 	if err != nil {
 		return GFA{}, err
 	}
@@ -175,4 +180,112 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 	}
 
 	return records, nil
+}
+
+// ProcessMETARResponse processes a METAR records for single or multiple unique sites
+func ProcessMETARResponse(metarRes NavCanadaResponse) error {
+
+	// i could have a query builder for this or for the whole nacan api
+	// to me this makes sense tbh
+	//navCan.newRequest().
+	//	withSites(...sites).
+	//	withMetarChoice(3).
+	//	withAlpha(taf).
+	//	withAlpha(metar).
+	//withQueryParam(key, value)
+	//.Build(0)
+	//alpha ienum of upwerinds
+
+	return nil
+}
+
+type ImageType string
+
+const (
+	GfaClouds     ImageType = "GFA/CLDWX"
+	GfaTurbulence ImageType = "GFA/TURBC"
+)
+
+type Alpha string
+
+const (
+	Airmet Alpha = "airmet"
+	Sigmet Alpha = "sigmet"
+	Metar  Alpha = "metar"
+	Taf    Alpha = "taf"
+)
+
+type NavCanUrl struct {
+	Builder     strings.Builder
+	sites       []string
+	metarChoice int
+	alpha       []Alpha
+	queryParams map[string]string
+	imageTypes  []ImageType
+	radius      int
+}
+
+func NewUrlBuilder() *NavCanUrl {
+	b := strings.Builder{}
+	b.WriteString(NavCanBaseApiUrl)
+	return &NavCanUrl{Builder: b}
+}
+
+func (n *NavCanUrl) Sites(sites ...string) *NavCanUrl {
+	n.sites = append(n.sites, sites...)
+	return n
+}
+
+func (n *NavCanUrl) MetarChoice(choice int) *NavCanUrl {
+	n.metarChoice = choice
+	return n
+}
+
+func (n *NavCanUrl) Alpha(alpha ...Alpha) *NavCanUrl {
+	n.alpha = append(n.alpha, alpha...)
+	return n
+}
+
+func (n *NavCanUrl) Images(imageTypes ...ImageType) *NavCanUrl {
+	n.imageTypes = append(n.imageTypes, imageTypes...)
+	return n
+}
+
+func (n *NavCanUrl) Radius(radius int) *NavCanUrl {
+	n.radius = radius
+	return n
+}
+
+func (n *NavCanUrl) Query(queryParams map[string]string) *NavCanUrl {
+	for k, v := range queryParams {
+		n.queryParams[k] = v
+	}
+	return n
+}
+
+func (n *NavCanUrl) Build() string {
+	builder := strings.Builder{}
+	builder.WriteString(NavCanBaseApiUrl)
+
+	for _, site := range n.sites {
+		builder.WriteString(fmt.Sprintf("&site=%s", strings.ToUpper(site)))
+	}
+
+	builder.WriteString(fmt.Sprintf("&metar_choice=%d", n.metarChoice))
+
+	for _, alpha := range n.alpha {
+		builder.WriteString(fmt.Sprintf("&alpha=%s", alpha))
+	}
+
+	for _, img := range n.imageTypes {
+		builder.WriteString(fmt.Sprintf("&image=%s", img))
+	}
+
+	for key, value := range n.queryParams {
+		builder.WriteString(fmt.Sprintf("&%s=%s", key, value))
+	}
+
+	builder.WriteString(fmt.Sprintf("&radius=%d", n.radius))
+
+	return builder.String()
 }
