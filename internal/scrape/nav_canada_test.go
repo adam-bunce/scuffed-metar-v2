@@ -1,7 +1,9 @@
 package scrape
 
 import (
+	"maps"
 	"scuffed-v2/internal/util"
+	"slices"
 	"testing"
 )
 
@@ -22,7 +24,7 @@ func TestProcessGFAResponse(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		var result NavCanadaResponse
+		var result NavCanadaResponse[Position]
 		err := util.ReadFileToStruct(tc.testFilePath, &result)
 		if err != nil {
 			t.Fatalf("Could not access test data, %s", err)
@@ -39,10 +41,6 @@ func TestProcessGFAResponse(t *testing.T) {
 	}
 }
 
-func TestProcessMETARResponse(t *testing.T) {
-
-}
-
 func TestNavCanUrl_GetUrl(t *testing.T) {
 	actual := NewUrlBuilder().
 		Sites("CYXE", "CYSF").
@@ -55,4 +53,29 @@ func TestNavCanUrl_GetUrl(t *testing.T) {
 	if expected != actual {
 		t.Fatalf("expected %q got %q", expected, actual)
 	}
+}
+
+func TestGetWeatherReports(t *testing.T) {
+	expectedSites := []string{"CYXE", "CYSF"}
+
+	sites, err := GetWeatherReports(expectedSites...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !slices.Equal(slices.Collect(maps.Keys(sites)), expectedSites) {
+		t.Fatalf("expected map with 2 keys got %d keys", len(slices.Collect(maps.Keys(sites))))
+	}
+}
+
+func TestGetGFAImageIds(t *testing.T) {
+	gfa, err := GetGFAImageIds()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(gfa.IcingTurbulenceFreezing) != 3 || len(gfa.CloudsWeather) != 3 {
+		t.Fatalf("Expected 3 images for both IcingTurbulenceFreezing(%d) and CloudsWeather(%d)", len(gfa.IcingTurbulenceFreezing), len(gfa.CloudsWeather))
+	}
+
 }

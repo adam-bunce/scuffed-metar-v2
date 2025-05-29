@@ -3,6 +3,7 @@ package scrape
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"scuffed-v2/internal/util"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ const (
 
 // NavCanadaResponse is a general structure returned from all NavCanada endpoints often
 // with each Data Text field containing escaped json
-type NavCanadaResponse struct {
+type NavCanadaResponse[PosType any] struct {
 	Meta struct {
 		Now   string `json:"now"`
 		Count struct {
@@ -38,11 +39,14 @@ type NavCanadaResponse struct {
 		EndValidity   string `json:"endValidity"`
 		Text          string `json:"text"` // escaped JSON to be further parsed
 		HasError      bool   `json:"hasError"`
-		Position      struct {
-			PointReference string `json:"pointReference"`
-			RadialDistance int    `json:"radialDistance"`
-		} `json:"position"`
+		// Positions can be either a list of Position, or a singular Position if only one site is requested
+		Positions PosType `json:"position"`
 	} `json:"data"`
+}
+
+type Position struct {
+	PointReference any `json:"pointReference"` // "CYXE", "0.9646", "0"
+	RadialDistance any `json:"radialDistance"`
 }
 
 // GFAText represents the Text section of a NavCanadaResponse GFA query
@@ -103,7 +107,7 @@ func (g *GFAMetadata) testString() string {
 
 // GetGFAImageIds sends a request to NavCanada's severs synchronously to get GFA (Graphic Area Forecast) data
 func GetGFAImageIds() (GFA, error) {
-	var body NavCanadaResponse
+	var body NavCanadaResponse[Position]
 
 	url := NewUrlBuilder().
 		Sites("CYXE").
@@ -120,10 +124,10 @@ func GetGFAImageIds() (GFA, error) {
 }
 
 // ProcessGFAResponse extracts GFA data contained in gfaRes's NavCanadaResponse's Data.Text field
-func ProcessGFAResponse(gfaRes NavCanadaResponse) (GFA, error) {
+func ProcessGFAResponse(gr NavCanadaResponse[Position]) (GFA, error) {
 	var res GFA
 
-	for _, datum := range gfaRes.Data {
+	for _, datum := range gr.Data {
 		gfaMeta, err := ExtractGFAMeta(datum.Text)
 		if err != nil {
 			return GFA{}, err
@@ -138,7 +142,6 @@ func ProcessGFAResponse(gfaRes NavCanadaResponse) (GFA, error) {
 			return GFA{}, fmt.Errorf("unknown location: %s", datum.Location)
 		}
 	}
-
 	return res, nil
 }
 
@@ -182,21 +185,49 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 	return records, nil
 }
 
+type WeatherReport struct {
+	Metar []string
+	Taf   []string
+}
+
+func GetWeatherReports(sites ...string) (map[string]*WeatherReport, error) {
+	var body NavCanadaResponse[[]Position]
+
+	url := NewUrlBuilder().
+		Sites(sites...).
+		MetarChoice(3).
+		Alpha(Metar, Taf).
+		Build()
+
+	err := util.RequestAndParse(url, &body)
+	if err != nil {
+		return nil, err
+	}
+
+	return ProcessMETARResponse(body)
+
+}
+
 // ProcessMETARResponse processes a METAR records for single or multiple unique sites
-func ProcessMETARResponse(metarRes NavCanadaResponse) error {
+func ProcessMETARResponse(mr NavCanadaResponse[[]Position]) (map[string]*WeatherReport, error) {
+	res := make(map[string]*WeatherReport)
 
-	// i could have a query builder for this or for the whole nacan api
-	// to me this makes sense tbh
-	//navCan.newRequest().
-	//	withSites(...sites).
-	//	withMetarChoice(3).
-	//	withAlpha(taf).
-	//	withAlpha(metar).
-	//withQueryParam(key, value)
-	//.Build(0)
-	//alpha ienum of upwerinds
+	for _, datum := range mr.Data {
+		airportCode := datum.Location
+		if res[airportCode] == nil {
+			res[airportCode] = &WeatherReport{}
+		}
+		switch Alpha(datum.Type) {
+		case Metar:
+			res[airportCode].Metar = append(res[airportCode].Metar, datum.Text)
+		case Taf:
+			res[airportCode].Taf = append(res[airportCode].Taf, datum.Text)
+		default:
+			slog.Info("Skipping unknown metar", slog.String("type", datum.Type))
+		}
+	}
 
-	return nil
+	return res, nil
 }
 
 type ImageType string
