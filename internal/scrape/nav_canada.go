@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"math"
 	"scuffed-v2/internal/util"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +25,7 @@ const (
 
 // NavCanadaResponse is a general structure returned from all NavCanada endpoints often
 // with each Data Text field containing escaped json
-type NavCanadaResponse[PosType any] struct {
+type NavCanadaResponse[PositionType any] struct {
 	Meta struct {
 		Now   string `json:"now"`
 		Count struct {
@@ -40,7 +43,7 @@ type NavCanadaResponse[PosType any] struct {
 		Text          string `json:"text"` // escaped JSON to be further parsed
 		HasError      bool   `json:"hasError"`
 		// Positions can be either a list of Position, or a singular Position if only one site is requested
-		Positions PosType `json:"position"`
+		Positions PositionType `json:"position"`
 	} `json:"data"`
 }
 
@@ -73,8 +76,8 @@ type GFAText struct {
 
 // GFA is the desired data extracted from a NavCanadaResponse
 type GFA struct {
-	CloudsWeather           []GFAMetadata
-	IcingTurbulenceFreezing []GFAMetadata
+	CloudsWeather           []GFAMetadata `json:"clouds_weather"`
+	IcingTurbulenceFreezing []GFAMetadata `json:"icing_turbulence_freezing"`
 }
 
 // testString produces a string to use in testing
@@ -93,9 +96,9 @@ func (g *GFA) testString() string {
 
 // A GFAMetadata contains the minimal information needed to display and select GFA
 type GFAMetadata struct {
-	StartValidity time.Time
-	EndValidity   time.Time
-	Id            string // the Id  the image used in creating the URL
+	StartValidity time.Time `json:"start_validity"`
+	EndValidity   time.Time `json:"end_validity"`
+	Id            string    `json:"id"` // the Id  the image used in creating the URL (TODO: maybe do server-side?
 }
 
 // testString produces a string to use in testing
@@ -185,12 +188,8 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 	return records, nil
 }
 
-type WeatherReport struct {
-	Metar []string
-	Taf   []string
-}
-
-func GetWeatherReports(sites ...string) (map[string]*WeatherReport, error) {
+// GetNavCanWeatherReports returns the metar and taf readouts for the specified sites
+func GetNavCanWeatherReports(sites ...string) (map[string]*WeatherReport, error) {
 	var body NavCanadaResponse[[]Position]
 
 	url := NewUrlBuilder().
@@ -240,10 +239,11 @@ const (
 type Alpha string
 
 const (
-	Airmet Alpha = "airmet"
-	Sigmet Alpha = "sigmet"
-	Metar  Alpha = "metar"
-	Taf    Alpha = "taf"
+	Airmet    Alpha = "airmet"
+	Sigmet    Alpha = "sigmet"
+	Metar     Alpha = "metar"
+	Taf       Alpha = "taf"
+	Upperwind Alpha = "upperwind"
 )
 
 type NavCanUrl struct {
@@ -256,67 +256,214 @@ type NavCanUrl struct {
 	radius      int
 }
 
-func NewUrlBuilder() *NavCanUrl {
-	b := strings.Builder{}
-	b.WriteString(NavCanBaseApiUrl)
-	return &NavCanUrl{Builder: b}
+type AirportWinds struct {
+	AirportCode string `json:"airport_code"`
+
+	High []Wind `json:"high_winds"`
+	Low  []Wind `json:"low_winds"`
+
+	MaxInt float64 // NOTE(adam): this is a relic of times gone by, I think we can remove it
 }
 
-func (n *NavCanUrl) Sites(sites ...string) *NavCanUrl {
-	n.sites = append(n.sites, sites...)
-	return n
+type Wind struct {
+	Data []ElevationValues `json:"elevation_valuse"`
+
+	BasedOn     time.Time `json:"based_on"`
+	Valid       time.Time `json:"valid"`
+	ForUseStart time.Time `json:"for_use_start"`
+	ForUseEnd   time.Time `json:"for_use_end"`
+}
+type ElevationValues struct {
+	Elevation float64   `json:"elevation"`
+	Values    []float64 `json:"values"`
 }
 
-func (n *NavCanUrl) MetarChoice(choice int) *NavCanUrl {
-	n.metarChoice = choice
-	return n
-}
+func GetWinds(sites ...string) ([]AirportWinds, error) {
+	var body NavCanadaResponse[any]
 
-func (n *NavCanUrl) Alpha(alpha ...Alpha) *NavCanUrl {
-	n.alpha = append(n.alpha, alpha...)
-	return n
-}
+	url := NewUrlBuilder().
+		Sites(sites...).
+		Alpha(Upperwind).
+		Query("upperwind_choice", "both").
+		Build()
 
-func (n *NavCanUrl) Images(imageTypes ...ImageType) *NavCanUrl {
-	n.imageTypes = append(n.imageTypes, imageTypes...)
-	return n
-}
+	fmt.Println("url", url)
 
-func (n *NavCanUrl) Radius(radius int) *NavCanUrl {
-	n.radius = radius
-	return n
-}
-
-func (n *NavCanUrl) Query(queryParams map[string]string) *NavCanUrl {
-	for k, v := range queryParams {
-		n.queryParams[k] = v
-	}
-	return n
-}
-
-func (n *NavCanUrl) Build() string {
-	builder := strings.Builder{}
-	builder.WriteString(NavCanBaseApiUrl)
-
-	for _, site := range n.sites {
-		builder.WriteString(fmt.Sprintf("&site=%s", strings.ToUpper(site)))
+	err := util.RequestAndParse(url, &body)
+	if err != nil {
+		return nil, err
 	}
 
-	builder.WriteString(fmt.Sprintf("&metar_choice=%d", n.metarChoice))
+	fmt.Println("err?", err)
 
-	for _, alpha := range n.alpha {
-		builder.WriteString(fmt.Sprintf("&alpha=%s", alpha))
+	return ProcessWindsResponse(body)
+}
+
+type WindsText struct {
+	Numbers []int
+	Strings []string
+	Arrays  [][]float64
+	Times   []time.Time
+}
+
+// UnmarshalJSON overrides the default json parse function based on struct annotations as WindsText is
+// []any and cannot be accurately described via struct tags
+func (w *WindsText) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("data is empty, nothing to unmarshal")
 	}
 
-	for _, img := range n.imageTypes {
-		builder.WriteString(fmt.Sprintf("&image=%s", img))
+	var raw []any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
 	}
 
-	for key, value := range n.queryParams {
-		builder.WriteString(fmt.Sprintf("&%s=%s", key, value))
+	for i, entry := range raw {
+		// Returned data always has "null" for in 7/8/9/10 positions
+		if slices.Contains([]int{7, 8, 9, 10}, i) {
+			continue
+		}
+
+		switch entry.(type) {
+		case string:
+			entryStr, ok := entry.(string)
+			if !ok {
+				return fmt.Errorf("entry is not a string")
+			}
+			timestamp, err := time.Parse(NavCanadaTimeFormatAlt, entryStr)
+			if err == nil {
+				w.Times = append(w.Times, timestamp.UTC())
+			} else {
+				w.Strings = append(w.Strings, entryStr)
+			}
+		case float64:
+			entryFloat, ok := entry.(float64)
+			if !ok {
+				return fmt.Errorf("cannot unmarshal float64")
+			}
+			w.Numbers = append(w.Numbers, int(entryFloat))
+		case int:
+			entryInt, ok := entry.(int)
+			if !ok {
+				return fmt.Errorf("cannot unmarshal int")
+			}
+			w.Numbers = append(w.Numbers, entryInt)
+		case []interface{}:
+			// winds data in [][]int
+			windsArr, ok := entry.([]interface{})
+			if !ok {
+				return fmt.Errorf("windsArray is not []interface{}")
+			}
+			for _, windsArray := range windsArr {
+				var parsedWindsValues []float64
+				windsSubArray, ok := windsArray.([]interface{})
+				if !ok {
+					return fmt.Errorf("windsSubArray is not []interface{}")
+				}
+				for _, windArray := range windsSubArray {
+					windsSubArrayFloat, ok := windArray.(float64)
+					if !ok {
+						// sometimes we get nulls, set to max int to signify that this data doesnt exist rather than 0
+						// as 0 is valid value
+						windsSubArrayFloat = math.MaxInt
+					}
+					parsedWindsValues = append(parsedWindsValues, windsSubArrayFloat)
+				}
+				w.Arrays = append(w.Arrays, parsedWindsValues)
+			}
+		default:
+			fmt.Printf("unknown type %T at %d\n", entry, i)
+		}
 	}
 
-	builder.WriteString(fmt.Sprintf("&radius=%d", n.radius))
+	return nil
+}
 
-	return builder.String()
+const (
+	expectedWindsCount = 5 // Elevation, <3x values>, 0
+	elevationIndex     = 0
+	lowThreshold       = 18_000.0
+)
+
+func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
+	airportWinds := make(map[string]AirportWinds)
+
+	// each wind record maps a wind state (full set of higher or lower and an associated timestamp) to an airport
+	for _, windRecord := range wr.Data {
+		currentAirport := windRecord.Location
+		// create if doesnt exist
+		_, ok := airportWinds[currentAirport]
+		if !ok {
+			airportWinds[currentAirport] = AirportWinds{}
+		}
+
+		var wt WindsText
+		err := json.NewDecoder(strings.NewReader(windRecord.Text)).Decode(&wt)
+		if err != nil {
+			return nil, err
+		}
+
+		var (
+			highWinds Wind
+			lowWinds  Wind
+		)
+
+		//  first value is elevation, the rest are the speeds
+		for _, wind := range wt.Arrays {
+			if len(wind) != expectedWindsCount {
+				slog.Info("Expected winds count doesn't match actual",
+					slog.Int("expected", expectedWindsCount),
+					slog.Int("actual", len(wind)),
+				)
+				continue
+			}
+
+			// add elevation values based on height
+			ev := ElevationValues{
+				Elevation: wind[elevationIndex],
+				Values:    wind[elevationIndex+1:],
+			}
+			if ev.Elevation <= lowThreshold {
+				lowWinds.Data = append(lowWinds.Data, ev)
+			} else {
+				highWinds.Data = append(highWinds.Data, ev)
+			}
+		}
+
+		const (
+			UnknownIndex     = 0
+			BasedOnIndex     = 1
+			ValidIndex       = 2
+			ForUseStartIndex = 3
+			ForUseEndIndex   = 4
+		)
+
+		if len(wt.Times) != 5 {
+			slog.Info("Expected 5 times for winds", slog.Int("actual", len(wt.Times)))
+			continue
+		}
+
+		// We're only operating one type of wind per-loop one, but set both
+		lowWinds.BasedOn, highWinds.BasedOn = wt.Times[BasedOnIndex], wt.Times[BasedOnIndex]
+		lowWinds.Valid, highWinds.Valid = wt.Times[ValidIndex], wt.Times[ValidIndex]
+		lowWinds.ForUseStart, highWinds.ForUseStart = wt.Times[ForUseStartIndex], wt.Times[ForUseStartIndex]
+		lowWinds.ForUseEnd, highWinds.ForUseEnd = wt.Times[ForUseEndIndex], wt.Times[ForUseEndIndex]
+
+		// ignore nil's
+		if highWinds.Data == nil {
+			airportWinds[currentAirport] = AirportWinds{
+				AirportCode: airportWinds[currentAirport].AirportCode,
+				High:        airportWinds[currentAirport].High,
+				Low:         append(airportWinds[currentAirport].Low, lowWinds),
+				MaxInt:      math.MaxInt}
+		} else {
+			airportWinds[currentAirport] = AirportWinds{
+				AirportCode: airportWinds[currentAirport].AirportCode,
+				High:        append(airportWinds[currentAirport].High, highWinds),
+				Low:         airportWinds[currentAirport].Low,
+				MaxInt:      math.MaxInt}
+		}
+	}
+
+	return slices.Collect(maps.Values(airportWinds)), nil
 }
