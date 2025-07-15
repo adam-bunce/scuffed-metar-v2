@@ -1,10 +1,5 @@
 package scrape
 
-import (
-	"fmt"
-	"net/http"
-)
-
 const (
 	CamecoRequestBody = `{
 	   "request": {
@@ -41,9 +36,6 @@ type CamecoResponse struct {
 }
 
 // GetCamecoWeatherReport returns the metar readouts for the specified site
-func GetCamecoWeatherReport(site string) (map[string]*WeatherReport, error) {
-	var body CamecoResponse
-
-	http.NewRequest(http.MethodPost, "https://smartweb.axys-aps.com/svc/WebDataService.svc/WebData/GetWebDataResponse", fmt.Sprint())
-
-}
+//func GetCamecoWeatherReport(site string) (map[string]*WeatherReport, error) {
+//
+//}

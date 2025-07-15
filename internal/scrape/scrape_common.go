@@ -8,8 +8,8 @@ import (
 // TODO: need a "parallelize all of these, send results (all the same) to channel generic func"
 
 type WeatherReport struct {
-	Metar []string
-	Taf   []string
+	Metar []string `json:"metar"`
+	Taf   []string `json:"taf"`
 }
 
 // NOTE(adam); we can do a switch with this to generate urls for EACH site!

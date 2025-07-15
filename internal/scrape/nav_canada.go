@@ -190,7 +190,7 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 
 // GetNavCanWeatherReports returns the metar and taf readouts for the specified sites
 func GetNavCanWeatherReports(sites ...string) (map[string]*WeatherReport, error) {
-	var body NavCanadaResponse[[]Position]
+	var body NavCanadaResponse[any]
 
 	url := NewUrlBuilder().
 		Sites(sites...).
@@ -208,7 +208,7 @@ func GetNavCanWeatherReports(sites ...string) (map[string]*WeatherReport, error)
 }
 
 // ProcessMETARResponse processes a METAR records for single or multiple unique sites
-func ProcessMETARResponse(mr NavCanadaResponse[[]Position]) (map[string]*WeatherReport, error) {
+func ProcessMETARResponse(mr NavCanadaResponse[any]) (map[string]*WeatherReport, error) {
 	res := make(map[string]*WeatherReport)
 
 	for _, datum := range mr.Data {
@@ -266,7 +266,7 @@ type AirportWinds struct {
 }
 
 type Wind struct {
-	Data []ElevationValues `json:"elevation_valuse"`
+	Data []ElevationValues `json:"elevation_values"`
 
 	BasedOn     time.Time `json:"based_on"`
 	Valid       time.Time `json:"valid"`
@@ -274,8 +274,9 @@ type Wind struct {
 	ForUseEnd   time.Time `json:"for_use_end"`
 }
 type ElevationValues struct {
-	Elevation float64   `json:"elevation"`
-	Values    []float64 `json:"values"`
+	Elevation float64 `json:"elevation"`
+	// Values is a *float64 because it can be empty
+	Values []*float64 `json:"values"`
 }
 
 func GetWinds(sites ...string) ([]AirportWinds, error) {
@@ -394,7 +395,7 @@ func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
 		// create if doesnt exist
 		_, ok := airportWinds[currentAirport]
 		if !ok {
-			airportWinds[currentAirport] = AirportWinds{}
+			airportWinds[currentAirport] = AirportWinds{AirportCode: currentAirport}
 		}
 
 		var wt WindsText
@@ -421,8 +422,15 @@ func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
 			// add elevation values based on height
 			ev := ElevationValues{
 				Elevation: wind[elevationIndex],
-				Values:    wind[elevationIndex+1:],
 			}
+			for _, windValue := range wind[elevationIndex+1:] {
+				if windValue == math.MaxInt {
+					ev.Values = append(ev.Values, nil)
+					continue
+				}
+				ev.Values = append(ev.Values, &windValue)
+			}
+
 			if ev.Elevation <= lowThreshold {
 				lowWinds.Data = append(lowWinds.Data, ev)
 			} else {
