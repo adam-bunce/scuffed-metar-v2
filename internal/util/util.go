@@ -6,9 +6,20 @@ import (
 	"os"
 )
 
-// RequestAndParse executed the request r and parses the body as json, placing the result into dest
-func RequestAndParse[T any](url string, dest *T) error {
+// GetAndParse executed the request r and parses the body as json, placing the result into dest
+func GetAndParse[T any](url string, dest *T) error {
 	res, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	return json.NewDecoder(res.Body).Decode(dest)
+}
+
+// RequestAndParse executed the request r and parses the body as json, placing the result into dest
+func RequestAndParse[T any](r *http.Request, dest *T) error {
+	res, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return err
 	}

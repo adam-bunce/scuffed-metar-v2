@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"math"
+	"net/http"
 	"scuffed-v2/internal/util"
 	"slices"
 	"strconv"
@@ -117,7 +117,7 @@ func GetGFAImageIds() (GFA, error) {
 		Images(GfaTurbulence, GfaClouds).
 		Build()
 
-	err := util.RequestAndParse(url, &body)
+	err := util.GetAndParse(url, &body)
 	if err != nil {
 		return GFA{}, err
 	}
@@ -189,7 +189,7 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 }
 
 // GetNavCanWeatherReports returns the metar and taf readouts for the specified sites
-func GetNavCanWeatherReports(sites ...string) (map[string]*WeatherReport, error) {
+func GetNavCanWeatherReports(sites ...string) ([]*WeatherReport, error) {
 	var body NavCanadaResponse[any]
 
 	url := NewUrlBuilder().
@@ -198,13 +198,17 @@ func GetNavCanWeatherReports(sites ...string) (map[string]*WeatherReport, error)
 		Alpha(Metar, Taf).
 		Build()
 
-	err := util.RequestAndParse(url, &body)
+	request, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = util.RequestAndParse(request, &body)
 	if err != nil {
 		return nil, err
 	}
 
-	return ProcessMETARResponse(body)
-
+	reports, err := ProcessMETARResponse(body)
+	return slices.Collect(maps.Values(reports)), err
 }
 
 // ProcessMETARResponse processes a METAR records for single or multiple unique sites
@@ -214,7 +218,7 @@ func ProcessMETARResponse(mr NavCanadaResponse[any]) (map[string]*WeatherReport,
 	for _, datum := range mr.Data {
 		airportCode := datum.Location
 		if res[airportCode] == nil {
-			res[airportCode] = &WeatherReport{}
+			res[airportCode] = &WeatherReport{Airport: airportCode}
 		}
 		switch Alpha(datum.Type) {
 		case Metar:
@@ -261,8 +265,6 @@ type AirportWinds struct {
 
 	High []Wind `json:"high_winds"`
 	Low  []Wind `json:"low_winds"`
-
-	MaxInt float64 // NOTE(adam): this is a relic of times gone by, I think we can remove it
 }
 
 type Wind struct {
@@ -274,7 +276,7 @@ type Wind struct {
 	ForUseEnd   time.Time `json:"for_use_end"`
 }
 type ElevationValues struct {
-	Elevation float64 `json:"elevation"`
+	Elevation *float64 `json:"elevation"`
 	// Values is a *float64 because it can be empty
 	Values []*float64 `json:"values"`
 }
@@ -290,7 +292,7 @@ func GetWinds(sites ...string) ([]AirportWinds, error) {
 
 	fmt.Println("url", url)
 
-	err := util.RequestAndParse(url, &body)
+	err := util.GetAndParse(url, &body)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +305,7 @@ func GetWinds(sites ...string) ([]AirportWinds, error) {
 type WindsText struct {
 	Numbers []int
 	Strings []string
-	Arrays  [][]float64
+	Arrays  [][]*float64
 	Times   []time.Time
 }
 
@@ -356,7 +358,7 @@ func (w *WindsText) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("windsArray is not []interface{}")
 			}
 			for _, windsArray := range windsArr {
-				var parsedWindsValues []float64
+				var parsedWindsValues []*float64
 				windsSubArray, ok := windsArray.([]interface{})
 				if !ok {
 					return fmt.Errorf("windsSubArray is not []interface{}")
@@ -364,11 +366,11 @@ func (w *WindsText) UnmarshalJSON(data []byte) error {
 				for _, windArray := range windsSubArray {
 					windsSubArrayFloat, ok := windArray.(float64)
 					if !ok {
-						// sometimes we get nulls, set to max int to signify that this data doesnt exist rather than 0
-						// as 0 is valid value
-						windsSubArrayFloat = math.MaxInt
+						// set as null, probably is
+						parsedWindsValues = append(parsedWindsValues, nil)
+						continue
 					}
-					parsedWindsValues = append(parsedWindsValues, windsSubArrayFloat)
+					parsedWindsValues = append(parsedWindsValues, &windsSubArrayFloat)
 				}
 				w.Arrays = append(w.Arrays, parsedWindsValues)
 			}
@@ -415,6 +417,7 @@ func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
 				slog.Info("Expected winds count doesn't match actual",
 					slog.Int("expected", expectedWindsCount),
 					slog.Int("actual", len(wind)),
+					slog.Any("arr", wind),
 				)
 				continue
 			}
@@ -424,14 +427,10 @@ func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
 				Elevation: wind[elevationIndex],
 			}
 			for _, windValue := range wind[elevationIndex+1:] {
-				if windValue == math.MaxInt {
-					ev.Values = append(ev.Values, nil)
-					continue
-				}
-				ev.Values = append(ev.Values, &windValue)
+				ev.Values = append(ev.Values, windValue)
 			}
 
-			if ev.Elevation <= lowThreshold {
+			if *ev.Elevation <= lowThreshold {
 				lowWinds.Data = append(lowWinds.Data, ev)
 			} else {
 				highWinds.Data = append(highWinds.Data, ev)
@@ -463,13 +462,13 @@ func ProcessWindsResponse(wr NavCanadaResponse[any]) ([]AirportWinds, error) {
 				AirportCode: airportWinds[currentAirport].AirportCode,
 				High:        airportWinds[currentAirport].High,
 				Low:         append(airportWinds[currentAirport].Low, lowWinds),
-				MaxInt:      math.MaxInt}
+			}
 		} else {
 			airportWinds[currentAirport] = AirportWinds{
 				AirportCode: airportWinds[currentAirport].AirportCode,
 				High:        append(airportWinds[currentAirport].High, highWinds),
 				Low:         airportWinds[currentAirport].Low,
-				MaxInt:      math.MaxInt}
+			}
 		}
 	}
 

@@ -9,11 +9,14 @@ import (
 // TODO: all metars in one place
 // func HandleGetMetar()
 
-func GetNavCanMetar(w http.ResponseWriter, req *http.Request) {
-	// TODO: need to add presentation logic for consistent sort ordering
+// GetMetar
+func GetMetar(w http.ResponseWriter, req *http.Request) {
 	// all metar data is cronned?
 	// i think? might as well just cron it though
-	data, err := scrape.GetNavCanWeatherReports("CYXE") //, "CYSF")
+	// how do i want to handle caching different data from dfiferent
+	// services and keeping it al in sync and lettin gusers specify endponits that also mihgt not exist?
+	data, err := scrape.GetNavCanWeatherReports("CYXE", "CYSF")
+	// TODO: need to add presentation logic for consistent sort ordering
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		return

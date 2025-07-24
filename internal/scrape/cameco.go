@@ -1,5 +1,13 @@
 package scrape
 
+import (
+	"fmt"
+	"log/slog"
+	"net/http"
+	"scuffed-v2/internal/util"
+	"strings"
+)
+
 const (
 	CamecoRequestBody = `{
 	   "request": {
@@ -36,6 +44,53 @@ type CamecoResponse struct {
 }
 
 // GetCamecoWeatherReport returns the metar readouts for the specified site
-//func GetCamecoWeatherReport(site string) (map[string]*WeatherReport, error) {
-//
-//}
+func GetCamecoWeatherReport(site string) (*WeatherReport, error) {
+	var body CamecoResponse
+
+	var camecoRequestBody = strings.NewReader(fmt.Sprintf(CamecoRequestBody, site))
+
+	req, err := http.NewRequest("POST", "https://smartweb.axys-aps.com/svc/WebDataService.svc/WebData/GetWebDataResponse", camecoRequestBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Keep-Alive", "timeout=3")
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+
+	err = util.RequestAndParse(req, &body)
+	if err != nil {
+		return nil, err
+	}
+
+	report, err := ProcessCamecoMetarResponse(body, site)
+	if err != nil {
+		return nil, err
+	}
+
+	return report, nil
+}
+
+func ProcessCamecoMetarResponse(mr CamecoResponse, site string) (*WeatherReport, error) {
+	res := WeatherReport{
+		Airport: site,
+	}
+
+	for i, row := range mr.D.Rows {
+		if i == 5 {
+			break
+		}
+
+		metar := strings.Split(row.RowData, ",")
+		if len(metar) > 1 {
+			res.Metar = append(res.Metar, metar[1])
+		} else {
+			slog.Error("unexpected cameco response row data items count",
+				slog.Int("expected", 2),
+				slog.Int("actual", len(mr.D.Rows)),
+			)
+			return &res, nil
+		}
+	}
+
+	return &res, nil
+}

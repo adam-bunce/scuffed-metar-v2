@@ -2,9 +2,8 @@ package scrape
 
 import (
 	"encoding/json"
-	"maps"
+	"reflect"
 	"scuffed-v2/internal/util"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,8 +78,8 @@ func TestGetWeatherReports(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !slices.Equal(slices.Collect(maps.Keys(sites)), expectedSites) {
-		t.Fatalf("expected map with 2 keys got %d keys", len(slices.Collect(maps.Keys(sites))))
+	if len(sites) != len(expectedSites) {
+		t.Fatalf("expected array with 2 entries got %d entries", len(sites))
 	}
 }
 
@@ -120,12 +119,19 @@ func TestParseWindsText(t *testing.T) {
 		"null, null, null, null, " +
 		"[[45000,330,34,-59,0],[53000,330,20,-58,0],[39000,310,58,-57,0],[34000,320,54,-48,0],[30000,310,51,-39,0],[24000,310,51,-24,0]]]"
 
+	f2p := func(f float64) *float64 { return &f }
 	expected :=
 		WindsText{
 			Numbers: []int{},
 			Strings: []string{"FBCN35", "KWNO"},
-			Arrays:  [][]float64{{45000, 330, 34, -59, 0}, {53000, 330, 20, -58, 0}, {39000, 310, 58, -57, 0}, {34000, 320, 54, -48, 0}, {30000, 310, 51, -39, 0}, {24000, 310, 51, -24, 0}},
-			Times:   []time.Time{},
+			Arrays: [][]*float64{
+				{f2p(45000), f2p(330), f2p(34), f2p(-59), f2p(0)},
+				{f2p(53000), f2p(330), f2p(20), f2p(-58), f2p(0)},
+				{f2p(39000), f2p(310), f2p(58), f2p(-57), f2p(0)},
+				{f2p(34000), f2p(320), f2p(54), f2p(-48), f2p(0)},
+				{f2p(30000), f2p(310), f2p(51), f2p(-39), f2p(0)},
+				{f2p(24000), f2p(310), f2p(51), f2p(-24), f2p(0)}},
+			Times: []time.Time{},
 		}
 
 	var wt WindsText
@@ -134,18 +140,18 @@ func TestParseWindsText(t *testing.T) {
 		t.Fatal("UnmarshallJSON unable to parse input", err)
 	}
 
-	// check strings
+	// check arrays
 	if len(wt.Arrays) != len(expected.Arrays) {
 		t.Errorf("expected %d arrays, got %d", len(expected.Arrays), len(wt.Arrays))
 	} else {
 		for i := range len(wt.Arrays) {
-			if !slices.Equal(wt.Arrays[i], expected.Arrays[i]) {
+			if !reflect.DeepEqual(wt.Arrays[i], expected.Arrays[i]) {
 				t.Errorf("expected array %+v, got %+v", expected.Arrays[i], wt.Arrays[i])
 			}
 		}
 	}
 
-	// check arrays
+	// check strings
 	if len(wt.Strings) != len(expected.Strings) {
 		t.Errorf("expected %d strings, got %d", len(expected.Strings), len(wt.Strings))
 		t.Errorf("expected: %v\n", expected.Strings)
