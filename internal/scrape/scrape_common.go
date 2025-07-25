@@ -11,6 +11,7 @@ type WeatherReport struct {
 	Airport string   `json:"airport"`
 	Metar   []string `json:"metar"`
 	Taf     []string `json:"taf"`
+	Cams    []string `json:"cams"`
 }
 
 // NOTE(adam); we can do a switch with this to generate urls for EACH site!

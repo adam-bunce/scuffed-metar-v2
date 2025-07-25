@@ -117,7 +117,7 @@ func GetGFAImageIds() (GFA, error) {
 		Images(GfaTurbulence, GfaClouds).
 		Build()
 
-	err := util.GetAndParse(url, &body)
+	err := util.GetAndParseJson(url, &body)
 	if err != nil {
 		return GFA{}, err
 	}
@@ -292,7 +292,7 @@ func GetWinds(sites ...string) ([]AirportWinds, error) {
 
 	fmt.Println("url", url)
 
-	err := util.GetAndParse(url, &body)
+	err := util.GetAndParseJson(url, &body)
 	if err != nil {
 		return nil, err
 	}

@@ -2,12 +2,13 @@ package util
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 )
 
-// GetAndParse executed the request r and parses the body as json, placing the result into dest
-func GetAndParse[T any](url string, dest *T) error {
+// GetAndParseJson executed the request r and parses the body as json, placing the result into dest
+func GetAndParseJson[T any](url string, dest *T) error {
 	res, err := http.Get(url)
 	if err != nil {
 		return err
@@ -15,6 +16,24 @@ func GetAndParse[T any](url string, dest *T) error {
 	defer res.Body.Close()
 
 	return json.NewDecoder(res.Body).Decode(dest)
+}
+
+// GetAndParseJson executed the request r and parses the body as json, placing the result into dest
+func GetAndParseString(url string, dest *string) error {
+	res, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	*dest = string(body)
+
+	return nil
 }
 
 // RequestAndParse executed the request r and parses the body as json, placing the result into dest
