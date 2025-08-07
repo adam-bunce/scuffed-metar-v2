@@ -18,7 +18,7 @@ func GetAndParseJson[T any](url string, dest *T) error {
 	return json.NewDecoder(res.Body).Decode(dest)
 }
 
-// GetAndParseJson executed the request r and parses the body as json, placing the result into dest
+// GetAndParseString executed the request r and parses the body as json, placing the result into dest
 func GetAndParseString(url string, dest *string) error {
 	res, err := http.Get(url)
 	if err != nil {

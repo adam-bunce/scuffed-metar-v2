@@ -14,7 +14,6 @@ func GetHighwaysWeatherReport(site string, siteName string) (*WeatherReport, err
 	if err != nil {
 		return nil, err
 	}
-
 	document, err := html.Parse(strings.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -47,7 +46,7 @@ func ExtractMetarReadOuts(root *html.Node) []string {
 
 		if isBoldNodeWithChild {
 			childText := n.FirstChild.Data
-			if strings.Contains(childText, "METAR") || strings.Contains(childText, "SPECI") {
+			if strings.Contains(childText, "METAR") || strings.Contains(childText, "SPECI") || strings.Contains(childText, "LWIS") {
 				res = append(res, n.FirstChild.Data)
 			}
 		}

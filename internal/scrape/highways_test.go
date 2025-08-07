@@ -9,7 +9,7 @@ import (
 )
 
 func TestGetHighwaysWeatherReport(t *testing.T) {
-	report, err := GetHighwaysWeatherReport("CJY4", "sandybay")
+	report, err := GetHighwaysWeatherReport("CZFD", "fonddulac")
 	if err != nil {
 		t.Fatal(err)
 	}
