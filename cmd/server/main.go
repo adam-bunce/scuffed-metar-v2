@@ -10,7 +10,7 @@ import (
 func main() {
 	r := mux.NewRouter()
 
-	// r.HandleFunc("/metar", api.GetNavCanMetar)
+	r.HandleFunc("/metar", api.GetMetar)
 	r.HandleFunc("/gfa", api.GetGFA)
 	r.HandleFunc("/winds", api.GetWinds)
 

@@ -189,7 +189,7 @@ func ExtractGFAMeta(text string) ([]GFAMetadata, error) {
 }
 
 // GetNavCanWeatherReports returns the metar and taf readouts for the specified sites
-func GetNavCanWeatherReports(sites ...string) ([]*WeatherReport, error) {
+func GetNavCanWeatherReports(sites []string) ([]*WeatherReport, error) {
 	var body NavCanadaResponse[any]
 
 	url := NewUrlBuilder().

@@ -73,7 +73,7 @@ func TestNavCanUrl_BuildWinds(t *testing.T) {
 func TestGetWeatherReports(t *testing.T) {
 	expectedSites := []string{"CYXE", "CYSF"}
 
-	sites, err := GetNavCanWeatherReports(expectedSites...)
+	sites, err := GetNavCanWeatherReports(expectedSites)
 	if err != nil {
 		t.Fatal(err)
 	}

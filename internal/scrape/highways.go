@@ -3,11 +3,34 @@ package scrape
 import (
 	"fmt"
 	"golang.org/x/net/html"
+	"log/slog"
 	"scuffed-v2/internal/util"
 	"strings"
 )
 
-func GetHighwaysWeatherReport(site string, siteName string) (*WeatherReport, error) {
+var SiteNamesMap = map[string]string{
+	"CYBE": "uranium",
+	"CZFD": "fonddulac",
+	"CYSF": "stonyrapids",
+	"CZWL": "wollaston",
+
+	"CJL4": "laloche",
+	"CYVT": "buffalonarrows",
+	"CKB2": "patuanak",
+	"CJF3": "ilealacrosse",
+
+	"CZPO": "pinehouse",
+	"CJY4": "sandybay",
+	"CJW4": "pelican",
+	"CJT4": "cumberlandhouse",
+
+	"CYLJ": "meadowlake",
+	"CYHB": "hudsonbay",
+}
+
+func GetHighwaysWeatherReport(site string) (*WeatherReport, error) {
+	siteName := SiteNamesMap[site]
+	slog.Info("highways", slog.String("siteName", siteName), slog.String("site", site))
 	var body string
 	url := fmt.Sprintf("http://highways.glmobile.com/%s", siteName)
 	err := util.GetAndParseString(url, &body)
@@ -19,13 +42,14 @@ func GetHighwaysWeatherReport(site string, siteName string) (*WeatherReport, err
 		return nil, err
 	}
 
-	return ProcessHighwaysMetarResponse(document)
+	return ProcessHighwaysMetarResponse(document, url, site)
 }
 
-func ProcessHighwaysMetarResponse(document *html.Node) (*WeatherReport, error) {
+func ProcessHighwaysMetarResponse(document *html.Node, url, site string) (*WeatherReport, error) {
 	res := &WeatherReport{
-		Cams:  ExtractCamUrls(document),
-		Metar: ExtractMetarReadOuts(document),
+		Airport: site,
+		Cams:    ExtractCamUrls(document, url),
+		Metar:   ExtractMetarReadOuts(document),
 	}
 	return res, nil
 }
@@ -60,7 +84,7 @@ func ExtractMetarReadOuts(root *html.Node) []string {
 	return res
 }
 
-func ExtractCamUrls(root *html.Node) []string {
+func ExtractCamUrls(root *html.Node, domain string) []string {
 	var res []string
 
 	// visit all nodes and if it's an image tag add its src attribute
@@ -72,7 +96,7 @@ func ExtractCamUrls(root *html.Node) []string {
 		if n.Type == html.ElementNode && n.Data == "img" {
 			for _, a := range n.Attr {
 				if a.Key == "src" {
-					res = append(res, a.Val)
+					res = append(res, domain+"/"+a.Val)
 					break
 				}
 			}
